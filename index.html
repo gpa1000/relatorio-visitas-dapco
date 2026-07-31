@@ -935,13 +935,13 @@ function abrirWhatsApp(id){
   window.location.href = url;
 }
 
-// ===== Agenda (Google Calendar) =====
+// ===== Agenda (Outlook Calendar) =====
 
 function pad2(n){ return String(n).padStart(2,'0'); }
 
-function formatarDataHoraICS(data){
-  return data.getFullYear() + pad2(data.getMonth()+1) + pad2(data.getDate())
-    + 'T' + pad2(data.getHours()) + pad2(data.getMinutes()) + '00';
+function formatarDataHoraOutlook(data){
+  return data.getFullYear() + '-' + pad2(data.getMonth()+1) + '-' + pad2(data.getDate())
+    + 'T' + pad2(data.getHours()) + ':' + pad2(data.getMinutes()) + ':00';
 }
 
 function gerarLinkAgenda(v){
@@ -967,9 +967,10 @@ function gerarLinkAgenda(v){
     `Vendedor: ${v.vendedor || '-'}`
   ].join('\n'));
   const local = encodeURIComponent([v.cidade, v.uf].filter(Boolean).join(' / '));
-  const datas = `${formatarDataHoraICS(inicio)}/${formatarDataHoraICS(fim)}`;
+  const startdt = formatarDataHoraOutlook(inicio);
+  const enddt = formatarDataHoraOutlook(fim);
 
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titulo}&dates=${datas}&details=${detalhes}&location=${local}`;
+  return `https://outlook.office.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=${titulo}&startdt=${startdt}&enddt=${enddt}&body=${detalhes}&location=${local}&allday=false`;
 }
 
 function abrirAgenda(v){
@@ -979,7 +980,7 @@ function abrirAgenda(v){
     return;
   }
   window.open(link, '_blank');
-  toast('📅 Confirme o compromisso na tela do Google Agenda');
+  toast('📅 Confirme o compromisso na tela do Outlook');
 }
 
 function abrirAgendaPorId(id){
