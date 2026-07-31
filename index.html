@@ -690,7 +690,7 @@ function salvarVisita(){
   const lista = pegarVisitas();
 
   if(idEmEdicao !== null){
-    const idx = lista.findIndex(x=>x.id===idEmEdicao);
+    const idx = lista.findIndex(x=>String(x.id)===String(idEmEdicao));
     if(idx > -1){
       lista[idx] = {
         ...lista[idx],
@@ -733,10 +733,10 @@ function agendarSeNecessario(dadosVisita){
 
 function editarVisita(id){
   const lista = pegarVisitas();
-  const v = lista.find(x=>x.id===id);
+  const v = lista.find(x=>String(x.id)===String(id));
   if(!v) return;
 
-  idEmEdicao = id;
+  idEmEdicao = v.id;
 
   document.getElementById('f-vendedor').value = v.vendedor||'';
   document.getElementById('f-cliente').value = v.cliente||'';
@@ -869,9 +869,10 @@ function renderHistorico(){
     const sinc = v.sincronizado
       ? '<span class="sync-badge ok">☁️ Sincronizado</span>'
       : '<span class="sync-badge pendente">⏳ Pendente</span>';
+    const idJs = idParaJS(v.id);
     return `
     <div class="visit-item">
-      <div class="visit-top" onclick="toggleDetalhes(${v.id})" style="cursor:pointer;">
+      <div class="visit-top" onclick="toggleDetalhes(${idJs})" style="cursor:pointer;">
         <div>
           <div class="visit-cliente">${escapeHTML(v.cliente)}</div>
           <div class="visit-data">${formatarDataHora(v.datahora)} · ${escapeHTML(v.status||'')}</div>
@@ -881,7 +882,7 @@ function renderHistorico(){
           ${sinc}
         </div>
       </div>
-      <dl class="visit-details" id="detalhes-${v.id}">
+      <dl class="visit-details" id="detalhes-${escapeAttr(v.id)}">
         <dt>Vendedor</dt><dd>${escapeHTML(v.vendedor||'-')}</dd>
         <dt>Local</dt><dd>${escapeHTML(v.cidade||'-')}${v.uf ? ' / '+escapeHTML(v.uf):''}</dd>
         <dt>Contato</dt><dd>${escapeHTML(v.contato||'-')} ${v.cargo? '('+escapeHTML(v.cargo)+')':''}</dd>
@@ -893,11 +894,11 @@ function renderHistorico(){
         <dt>Observações</dt><dd>${escapeHTML(v.obs||'-')}</dd>
       </dl>
       <div class="visit-actions">
-        <button onclick="editarVisita(${v.id})">✏️ Editar</button>
-        ${v.telefone ? `<button class="whatsapp-btn" onclick="abrirWhatsApp(${v.id})">💬 WhatsApp</button>` : ''}
-        ${(v.proximaAcao && v.prazo) ? `<button onclick="abrirAgendaPorId(${v.id})">📅 Agenda</button>` : ''}
-        <button onclick="compartilharVisita(${v.id})">📤 Compartilhar</button>
-        <button onclick="excluirVisita(${v.id})">🗑️ Excluir</button>
+        <button onclick="editarVisita(${idJs})">✏️ Editar</button>
+        ${v.telefone ? `<button class="whatsapp-btn" onclick="abrirWhatsApp(${idJs})">💬 WhatsApp</button>` : ''}
+        ${(v.proximaAcao && v.prazo) ? `<button onclick="abrirAgendaPorId(${idJs})">📅 Agenda</button>` : ''}
+        <button onclick="compartilharVisita(${idJs})">📤 Compartilhar</button>
+        <button onclick="excluirVisita(${idJs})">🗑️ Excluir</button>
       </div>
     </div>`;
   }).join('');
@@ -925,19 +926,32 @@ function escapeHTML(str){
   }[s]));
 }
 
+const escapeAttr = escapeHTML;
+
+// IDs de visitas podem ser números (Date.now(), visitas criadas neste celular)
+// ou textos (ex: "ADR-001", vindos da importação da planilha). Ao montar os
+// onclick="funcao(${...})" do histórico, o valor precisa sempre virar uma
+// string JS entre aspas — se não, um ID como "ADR-001" quebra o atributo
+// (o navegador tenta interpretar ADR-001 como código, não como texto) e o
+// botão simplesmente não faz nada. Por isso todo lookup de visita compara
+// String(x.id) === String(id), funcionando com os dois formatos.
+function idParaJS(id){
+  return "'" + String(id).replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "'";
+}
+
 function excluirVisita(id){
   if(!confirm('Excluir esta visita? Essa ação não pode ser desfeita.')) return;
   let lista = pegarVisitas();
-  lista = lista.filter(v=>v.id!==id);
+  lista = lista.filter(v=>String(v.id)!==String(id));
   salvarVisitas(lista);
-  if(idEmEdicao === id) sairModoEdicao();
+  if(String(idEmEdicao) === String(id)) sairModoEdicao();
   renderHistorico();
   toast('Visita excluída');
 }
 
 function compartilharVisita(id){
   const lista = pegarVisitas();
-  const v = lista.find(x=>x.id===id);
+  const v = lista.find(x=>String(x.id)===String(id));
   if(!v) return;
   const texto = `*Relatório de Visita - DAPCO*
 Cliente: ${v.cliente}
@@ -974,7 +988,7 @@ Vendedor: ${v.vendedor||'-'}`;
 
 function abrirWhatsApp(id){
   const lista = pegarVisitas();
-  const v = lista.find(x=>x.id===id);
+  const v = lista.find(x=>String(x.id)===String(id));
   if(!v || !v.telefone){
     toast('⚠️ Esta visita não tem telefone cadastrado');
     return;
@@ -1046,7 +1060,7 @@ function abrirAgenda(v){
 
 function abrirAgendaPorId(id){
   const lista = pegarVisitas();
-  const v = lista.find(x=>x.id===id);
+  const v = lista.find(x=>String(x.id)===String(id));
   if(!v) return;
   abrirAgenda(v);
 }
