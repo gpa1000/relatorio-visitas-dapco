@@ -425,6 +425,9 @@
         <button class="btn btn-secondary" onclick="tentarSincronizarPendentes(true)">🔄 Sincronizar agora</button>
       </div>
       <div class="btn-row">
+        <button class="btn btn-secondary" onclick="abrirImportar()">⬆️ Importar da planilha</button>
+      </div>
+      <div class="btn-row">
         <button class="btn btn-secondary" onclick="exportarCSV()">⬇️ Exportar CSV (Excel)</button>
       </div>
       <button class="btn btn-danger" onclick="apagarTudo()">🗑️ Apagar todas as visitas</button>
@@ -461,8 +464,52 @@
       7. <b>Sempre que editar o script depois</b>, precisa publicar de novo: Implantar → Gerenciar implantações → ícone de lápis → "Nova versão" → Implantar. Só salvar o script (Ctrl+S) não atualiza o link já publicado.
     </p>
     <textarea readonly style="font-family:monospace;font-size:.72rem;min-height:220px;" onclick="this.select()">function doGet(e) {
-  return ContentService.createTextOutput(JSON.stringify({ok:true, info:'Apps Script no ar'}))
-    .setMimeType(ContentService.MimeType.JSON);
+  try {
+    var params = (e && e.parameter) ? e.parameter : {};
+
+    // ?acao=listar&vendedor=Nome -> devolve as visitas daquele vendedor
+    // (usado pelo botão "Importar da planilha" do app)
+    if (params.acao === 'listar') {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var sheet = ss.getSheetByName('Visitas');
+      if (!sheet || sheet.getLastRow() < 2) {
+        return ContentService.createTextOutput(JSON.stringify({ok:true, visitas:[]}))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
+      var valores = sheet.getDataRange().getValues();
+      var cabecalho = valores[0];
+      var filtro = String(params.vendedor || '').trim().toLowerCase();
+      var visitas = [];
+
+      for (var i = 1; i < valores.length; i++) {
+        var obj = {};
+        for (var c = 0; c < cabecalho.length; c++) obj[cabecalho[c]] = valores[i][c];
+
+        var vendedorLinha = String(obj['Vendedor'] || '').trim().toLowerCase();
+        if (filtro && vendedorLinha !== filtro) continue;
+
+        visitas.push({
+          id: obj['ID'], vendedor: obj['Vendedor'], cliente: obj['Cliente'],
+          cidade: obj['Cidade'], uf: obj['UF'], contato: obj['Contato'],
+          cargo: obj['Cargo'], telefone: obj['Telefone'], datahora: obj['Data/Hora'],
+          status: obj['Status'], produtos: obj['Produtos'], potencial: obj['Potencial'],
+          valor: obj['Valor'], objecoes: obj['Objeções'], proximaAcao: obj['Próxima Ação'],
+          prazo: obj['Prazo'], prazoHora: obj['Horário'], obs: obj['Observações']
+        });
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({ok:true, visitas:visitas}))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ok:true, info:'Apps Script no ar'}))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (erro) {
+    return ContentService.createTextOutput(JSON.stringify({ok:false, erro: String(erro)}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }
 
 function doPost(e) {
@@ -491,8 +538,22 @@ function doPost(e) {
 }</textarea>
     <p class="hint">Toque no código para selecionar tudo e copiar.</p>
     <p class="hint">💡 Teste rápido: abra a URL <code>/exec</code> direto no navegador do celular. Se aparecer <code>{"ok":true,...}</code>, a implantação está correta. Se aparecer uma tela de login do Google ou erro, o problema é o passo 5 ou 7 acima.</p>
+    <p class="hint">⬆️ Este código já inclui a função usada pelo botão "Importar da planilha" (histórico → Importar), que traz para o celular as visitas de um vendedor específico já registradas na planilha. Se você atualizou um script antigo, não esqueça do passo 7 (Nova versão) para o botão funcionar.</p>
 
     <button class="btn btn-secondary" onclick="fecharConfig()" style="margin-top:14px;">Fechar</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-importar" onclick="fecharImportarFora(event)">
+  <div class="modal-card">
+    <h2>⬆️ Importar da planilha</h2>
+    <p class="hint">Escolha de qual vendedor você quer trazer as visitas já registradas na planilha do Google Sheets para este celular. Visitas que já existem aqui (mesmo ID) não são duplicadas.</p>
+    <label class="req">Nome do vendedor</label>
+    <input type="text" id="imp-vendedor" placeholder="Ex: Adriano Fuck">
+    <div class="btn-row" style="margin-top:14px;">
+      <button class="btn btn-primary" onclick="confirmarImportar()">Importar</button>
+      <button class="btn btn-secondary" onclick="fecharImportar()">Cancelar</button>
+    </div>
   </div>
 </div>
 
@@ -1107,6 +1168,110 @@ async function testarSincronizacao(){
   toast(resultado.ok
     ? '✅ Enviado de verdade! Confira a aba "Visitas" na planilha'
     : '❌ ' + resultado.motivo);
+}
+
+// ===== Importar visitas da planilha (por vendedor) =====
+
+function abrirImportar(){
+  const url = localStorage.getItem(CHAVE_SHEET_URL);
+  if(!url){
+    toast('⚠️ Configure a URL do Google Sheets em Configurações antes de importar');
+    return;
+  }
+  document.getElementById('imp-vendedor').value = localStorage.getItem(CHAVE_VENDEDOR) || '';
+  document.getElementById('modal-importar').classList.add('open');
+}
+
+function fecharImportar(){
+  document.getElementById('modal-importar').classList.remove('open');
+}
+
+function fecharImportarFora(e){
+  if(e.target.id === 'modal-importar') fecharImportar();
+}
+
+async function confirmarImportar(){
+  const vendedor = document.getElementById('imp-vendedor').value.trim();
+  if(!vendedor){
+    toast('⚠️ Informe o nome do vendedor');
+    return;
+  }
+  const url = localStorage.getItem(CHAVE_SHEET_URL);
+  if(!url){
+    toast('⚠️ Configure a URL do Google Sheets em Configurações');
+    return;
+  }
+  fecharImportar();
+  toast('Buscando visitas de ' + vendedor + '...');
+
+  try{
+    const separador = url.includes('?') ? '&' : '?';
+    const resposta = await fetch(url + separador + 'acao=listar&vendedor=' + encodeURIComponent(vendedor));
+    const textoResposta = await resposta.text();
+
+    if(textoResposta.trim().startsWith('<')){
+      toast('⚠️ A planilha não retornou dados válidos — confira se o Apps Script foi republicado (Nova versão) depois de colar o código atualizado.');
+      return;
+    }
+
+    let dados;
+    try{ dados = JSON.parse(textoResposta); }
+    catch(e){ toast('⚠️ Resposta inesperada do servidor'); return; }
+
+    if(!dados || !dados.ok){
+      toast('⚠️ ' + ((dados && dados.erro) || 'Erro ao importar'));
+      return;
+    }
+
+    const encontradas = dados.visitas || [];
+    if(encontradas.length === 0){
+      toast('Nenhuma visita encontrada na planilha para "' + vendedor + '"');
+      return;
+    }
+
+    const lista = pegarVisitas();
+    const idsExistentes = new Set(lista.map(v=>String(v.id)));
+    let importadas = 0;
+
+    encontradas.forEach(row=>{
+      const idOriginal = String(row.id || '').trim();
+      const idFinal = idOriginal || ('imp-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+      if(idsExistentes.has(idFinal)) return; // já existe neste celular, não duplica
+
+      const visita = {
+        id: idFinal,
+        vendedor: row.vendedor || vendedor,
+        cliente: row.cliente || '',
+        cidade: row.cidade || '',
+        uf: row.uf || '',
+        contato: row.contato || '',
+        cargo: row.cargo || '',
+        telefone: row.telefone || '',
+        datahora: row.datahora || '',
+        status: row.status || '',
+        produtos: row.produtos || '',
+        potencial: row.potencial || '',
+        valor: row.valor || '',
+        objecoes: row.objecoes || '',
+        proximaAcao: row.proximaAcao || '',
+        prazo: row.prazo || '',
+        prazoHora: row.prazoHora || '',
+        obs: row.obs || '',
+        criadoEm: new Date().toISOString(),
+        sincronizado: true
+      };
+      lista.push(visita);
+      idsExistentes.add(idFinal);
+      importadas++;
+    });
+
+    salvarVisitas(lista);
+    renderHistorico();
+    toast(`✅ ${importadas} visita(s) importada(s) de ${encontradas.length} encontrada(s) para "${vendedor}"`);
+
+  }catch(err){
+    toast('⚠️ Falha ao importar: ' + err.message);
+  }
 }
 
 // ===== Ditado por voz =====
