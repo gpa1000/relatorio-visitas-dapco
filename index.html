@@ -416,7 +416,14 @@
       <div class="summary-box"><div class="num" id="sum-pendentes">0</div><div class="lbl">P/ sincronizar</div></div>
     </div>
 
-    <input type="text" class="search-box" id="f-busca" placeholder="🔎 Buscar por cliente ou contato" oninput="renderHistorico()" style="width:100%;padding:11px;border-radius:10px;border:1.5px solid var(--borda);font-size:16px;">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+      <input type="text" class="search-box" id="f-busca" placeholder="🔎 Buscar por cliente ou contato" oninput="renderHistorico()" style="flex:1;min-width:0;padding:11px;border-radius:10px;border:1.5px solid var(--borda);font-size:16px;">
+      <select id="f-ordem" onchange="mudarOrdem()" title="Ordenar por" style="padding:11px 8px;border-radius:10px;border:1.5px solid var(--borda);font-size:16px;background:#fff;">
+        <option value="recentes">Mais recentes</option>
+        <option value="cliente">Cliente (A–Z)</option>
+        <option value="potencial">Maior potencial</option>
+      </select>
+    </div>
 
     <div id="lista-visitas"></div>
 
@@ -599,6 +606,62 @@ function mesclarListasPorId(atual, novas){
     resultado.push(v);
   });
   return resultado;
+}
+
+const CHAVE_ORDEM = 'dapco_ordem_hist_v1';
+
+// As visitas importadas trazem o que estava na planilha, que nem sempre e uma
+// data valida. Devolver null deixa a ordenacao empurrar essas para o fim em
+// vez de espalhar em posicao aleatoria.
+function parseDataVisita(valor){
+  if(valor === null || valor === undefined || valor === '') return null;
+  const t = new Date(valor).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+function rankPotencial(p){
+  const limpo = String(p == null ? '' : p)
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .trim().toLowerCase();
+  if(limpo === 'alto') return 3;
+  if(limpo === 'medio') return 2;
+  if(limpo === 'baixo') return 1;
+  return 0;
+}
+
+// Data invalida (null) sempre depois de qualquer data valida.
+function compararRecentes(a, b){
+  const da = parseDataVisita(a.datahora);
+  const db = parseDataVisita(b.datahora);
+  if(da === null && db === null) return 0;
+  if(da === null) return 1;
+  if(db === null) return -1;
+  return db - da;
+}
+
+function ordenarVisitas(lista, modo){
+  const copia = (Array.isArray(lista) ? lista : []).slice();
+
+  if(modo === 'cliente'){
+    return copia.sort((a,b)=>{
+      const ca = String(a.cliente || '').trim();
+      const cb = String(b.cliente || '').trim();
+      if(!ca && !cb) return 0;
+      if(!ca) return 1;
+      if(!cb) return -1;
+      const cmp = ca.localeCompare(cb, 'pt-BR', {sensitivity:'base'});
+      return cmp !== 0 ? cmp : compararRecentes(a,b);
+    });
+  }
+
+  if(modo === 'potencial'){
+    return copia.sort((a,b)=>{
+      const dif = rankPotencial(b.potencial) - rankPotencial(a.potencial);
+      return dif !== 0 ? dif : compararRecentes(a,b);
+    });
+  }
+
+  return copia.sort(compararRecentes);
 }
 
 // ===== FIM NUCLEO TESTAVEL =====
@@ -877,14 +940,26 @@ function formatarDataHora(dh){
   return d.toLocaleString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
 }
 
+function ordemAtual(){
+  return localStorage.getItem(CHAVE_ORDEM) || 'recentes';
+}
+
+function mudarOrdem(){
+  localStorage.setItem(CHAVE_ORDEM, document.getElementById('f-ordem').value);
+  renderHistorico();
+}
+
 function renderHistorico(){
   const lista = pegarVisitas();
   const busca = (document.getElementById('f-busca').value || '').toLowerCase();
 
-  const filtradas = lista.filter(v=>{
+  const encontradas = lista.filter(v=>{
     if(!busca) return true;
     return (v.cliente||'').toLowerCase().includes(busca) || (v.contato||'').toLowerCase().includes(busca);
   });
+
+  // filtra primeiro, ordena depois
+  const filtradas = ordenarVisitas(encontradas, ordemAtual());
 
   // resumo
   document.getElementById('sum-total').textContent = lista.length;
@@ -1483,6 +1558,7 @@ function exportarCSV(){
 
 // inicialização
 carregarVendedor();
+document.getElementById('f-ordem').value = ordemAtual();
 document.getElementById('f-datahora').value = agoraLocalISO();
 tentarSincronizarPendentes(false);
 window.addEventListener('online', ()=>tentarSincronizarPendentes(false));
