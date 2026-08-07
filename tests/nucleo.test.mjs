@@ -152,3 +152,95 @@ test('ordenarVisitas com modo desconhecido cai em recentes', () => {
   ];
   assert.deepEqual(n.ordenarVisitas(lista, 'inventado').map(v => v.id), [2, 1]);
 });
+
+test('gravarGaveta e lerGaveta isolam vendedores diferentes', () => {
+  const ls = criarLocalStorageFalso();
+  const n = carregarNucleo(ls);
+  n.gravarGaveta('Adriano Fuck', [{ id: 1, cliente: 'Cliente A' }]);
+  n.gravarGaveta('Samuel', [{ id: 2, cliente: 'Cliente B' }]);
+  assert.equal(n.lerGaveta('Adriano Fuck').length, 1);
+  assert.equal(n.lerGaveta('Adriano Fuck')[0].cliente, 'Cliente A');
+  assert.equal(n.lerGaveta('Samuel')[0].cliente, 'Cliente B');
+});
+
+test('lerGaveta devolve lista vazia para vendedor sem dados', () => {
+  const n = carregarNucleo(criarLocalStorageFalso());
+  assert.deepEqual(n.lerGaveta('Ninguem'), []);
+});
+
+test('lerGaveta nao quebra com conteudo corrompido', () => {
+  const ls = criarLocalStorageFalso({ 'dapco_visitas_v1::x': 'nao e json' });
+  const n = carregarNucleo(ls);
+  assert.deepEqual(n.lerGaveta('x'), []);
+});
+
+test('listarVendedoresLocais devolve os nomes originais ordenados', () => {
+  const ls = criarLocalStorageFalso();
+  const n = carregarNucleo(ls);
+  n.gravarGaveta('Samuel', [{ id: 1 }]);
+  n.gravarGaveta('Adriano Fuck', [{ id: 2 }]);
+  n.gravarGaveta('Ávila', [{ id: 3 }]);
+  assert.deepEqual(n.listarVendedoresLocais(), ['Adriano Fuck', 'Ávila', 'Samuel']);
+});
+
+test('migracao move a chave antiga para a gaveta do vendedor salvo', () => {
+  const ls = criarLocalStorageFalso({
+    'dapco_visitas_v1': JSON.stringify([{ id: 'ADR-001' }, { id: 'ADR-002' }]),
+    'dapco_vendedor_v1': 'Adriano Fuck',
+  });
+  const n = carregarNucleo(ls);
+  const r = n.migrarParaGavetas();
+  assert.equal(r.migrou, true);
+  assert.equal(r.quantidade, 2);
+  assert.equal(n.lerGaveta('Adriano Fuck').length, 2);
+});
+
+test('migracao grava o backup antes de remover a chave antiga', () => {
+  const antigo = JSON.stringify([{ id: 'ADR-001' }]);
+  const ls = criarLocalStorageFalso({
+    'dapco_visitas_v1': antigo,
+    'dapco_vendedor_v1': 'Adriano Fuck',
+  });
+  const n = carregarNucleo(ls);
+  n.migrarParaGavetas();
+  assert.equal(ls.getItem('dapco_visitas_v1__backup'), antigo);
+  assert.equal(ls.getItem('dapco_visitas_v1'), null);
+});
+
+test('migracao sem vendedor salvo usa a gaveta sem-vendedor', () => {
+  const ls = criarLocalStorageFalso({
+    'dapco_visitas_v1': JSON.stringify([{ id: 1 }]),
+  });
+  const n = carregarNucleo(ls);
+  const r = n.migrarParaGavetas();
+  assert.equal(r.vendedor, '');
+  assert.equal(ls.getItem('dapco_visitas_v1::sem-vendedor') !== null, true);
+});
+
+test('migracao roda uma vez so', () => {
+  const ls = criarLocalStorageFalso({
+    'dapco_visitas_v1': JSON.stringify([{ id: 1 }]),
+    'dapco_vendedor_v1': 'Adriano Fuck',
+  });
+  const n = carregarNucleo(ls);
+  assert.equal(n.migrarParaGavetas().migrou, true);
+  assert.equal(n.migrarParaGavetas().migrou, false);
+});
+
+test('migracao com gaveta de destino ja preenchida nao duplica', () => {
+  const ls = criarLocalStorageFalso({
+    'dapco_visitas_v1': JSON.stringify([{ id: 'ADR-001' }, { id: 'ADR-002' }]),
+    'dapco_visitas_v1::adriano-fuck': JSON.stringify([{ id: 'ADR-001' }]),
+    'dapco_vendedor_v1': 'Adriano Fuck',
+  });
+  const n = carregarNucleo(ls);
+  n.migrarParaGavetas();
+  assert.equal(n.lerGaveta('Adriano Fuck').length, 2);
+});
+
+test('migracao nao faz nada quando nao ha chave antiga', () => {
+  const ls = criarLocalStorageFalso();
+  const n = carregarNucleo(ls);
+  assert.equal(n.migrarParaGavetas().migrou, false);
+  assert.equal(ls.getItem('dapco_visitas_v1__backup'), null);
+});

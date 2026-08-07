@@ -578,6 +578,7 @@ const CHAVE_VISITAS_BASE = 'dapco_visitas_v1';
 const CHAVE_BACKUP = 'dapco_visitas_v1__backup';
 const CHAVE_MIGRACAO = 'dapco_migracao_gavetas_v1';
 const CHAVE_REGISTRO_VENDEDORES = 'dapco_vendedores_locais_v1';
+const CHAVE_VENDEDOR = 'dapco_vendedor_v1';
 
 // "Adriano Fuck", "adriano fuck " e "ADRIANO FUCK" viram todos adriano-fuck,
 // para que variacoes de digitacao caiam na mesma gaveta.
@@ -606,6 +607,72 @@ function mesclarListasPorId(atual, novas){
     resultado.push(v);
   });
   return resultado;
+}
+
+// O registro guarda slug -> nome original, porque o slug perde a grafia.
+function registrarVendedorLocal(nome){
+  const limpo = String(nome == null ? '' : nome).trim();
+  if(!limpo) return;
+  let registro = {};
+  try{ registro = JSON.parse(localStorage.getItem(CHAVE_REGISTRO_VENDEDORES)) || {}; }
+  catch(e){ registro = {}; }
+  registro[slugVendedor(limpo)] = limpo;
+  localStorage.setItem(CHAVE_REGISTRO_VENDEDORES, JSON.stringify(registro));
+}
+
+function listarVendedoresLocais(){
+  let registro = {};
+  try{ registro = JSON.parse(localStorage.getItem(CHAVE_REGISTRO_VENDEDORES)) || {}; }
+  catch(e){ registro = {}; }
+  return Object.values(registro)
+    .filter(Boolean)
+    .sort((a,b)=> String(a).localeCompare(String(b), 'pt-BR', {sensitivity:'base'}));
+}
+
+function lerGaveta(nome){
+  try{
+    const bruto = localStorage.getItem(chaveGaveta(nome));
+    const lista = JSON.parse(bruto);
+    return Array.isArray(lista) ? lista : [];
+  }catch(e){
+    return [];
+  }
+}
+
+function gravarGaveta(nome, lista){
+  localStorage.setItem(chaveGaveta(nome), JSON.stringify(lista || []));
+  registrarVendedorLocal(nome);
+}
+
+// Roda uma vez por aparelho. Move as visitas da chave unica antiga para a
+// gaveta do vendedor salvo, sempre gravando o backup ANTES de remover nada.
+function migrarParaGavetas(){
+  if(localStorage.getItem(CHAVE_MIGRACAO)){
+    return {migrou:false, quantidade:0, vendedor:''};
+  }
+
+  const bruto = localStorage.getItem(CHAVE_VISITAS_BASE);
+  let antigas = null;
+  try{ antigas = JSON.parse(bruto); }catch(e){ antigas = null; }
+
+  if(!Array.isArray(antigas) || antigas.length === 0){
+    localStorage.setItem(CHAVE_MIGRACAO, new Date().toISOString());
+    return {migrou:false, quantidade:0, vendedor:''};
+  }
+
+  // 1) backup primeiro, sempre
+  localStorage.setItem(CHAVE_BACKUP, bruto);
+
+  // 2) mesclar na gaveta de destino
+  const vendedor = String(localStorage.getItem(CHAVE_VENDEDOR) || '').trim();
+  const destino = mesclarListasPorId(lerGaveta(vendedor), antigas);
+  gravarGaveta(vendedor, destino);
+
+  // 3) so entao remover a chave antiga
+  localStorage.removeItem(CHAVE_VISITAS_BASE);
+  localStorage.setItem(CHAVE_MIGRACAO, new Date().toISOString());
+
+  return {migrou:true, quantidade:antigas.length, vendedor:vendedor};
 }
 
 const CHAVE_ORDEM = 'dapco_ordem_hist_v1';
@@ -740,14 +807,16 @@ function carregarVendedor(){
   if(v) document.getElementById('f-vendedor').value = v;
 }
 
+function vendedorAtivo(){
+  return String(localStorage.getItem(CHAVE_VENDEDOR) || '').trim();
+}
+
 function pegarVisitas(){
-  try{
-    return JSON.parse(localStorage.getItem(CHAVE_VISITAS)) || [];
-  }catch(e){ return []; }
+  return lerGaveta(vendedorAtivo());
 }
 
 function salvarVisitas(lista){
-  localStorage.setItem(CHAVE_VISITAS, JSON.stringify(lista));
+  gravarGaveta(vendedorAtivo(), lista);
 }
 
 function salvarVisita(){
@@ -1516,10 +1585,11 @@ function ditar(campoId, botao){
 }
 
 function apagarTudo(){
-  if(!confirm('Apagar TODAS as visitas salvas neste celular? Essa ação não pode ser desfeita.')) return;
-  localStorage.removeItem(CHAVE_VISITAS);
+  const quem = vendedorAtivo() || 'sem vendedor definido';
+  if(!confirm(`Apagar TODAS as visitas de "${quem}" neste aparelho? Essa ação não pode ser desfeita.`)) return;
+  localStorage.removeItem(chaveGaveta(vendedorAtivo()));
   renderHistorico();
-  toast('Todas as visitas foram apagadas');
+  toast('Visitas apagadas');
 }
 
 function exportarCSV(){
@@ -1557,9 +1627,13 @@ function exportarCSV(){
 }
 
 // inicialização
+const resultadoMigracao = migrarParaGavetas();
 carregarVendedor();
 document.getElementById('f-ordem').value = ordemAtual();
 document.getElementById('f-datahora').value = agoraLocalISO();
+if(resultadoMigracao.migrou){
+  toast(`${resultadoMigracao.quantidade} visita(s) organizadas por vendedor`);
+}
 tentarSincronizarPendentes(false);
 window.addEventListener('online', ()=>tentarSincronizarPendentes(false));
 </script>
