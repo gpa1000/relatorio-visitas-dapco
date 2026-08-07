@@ -1125,6 +1125,27 @@ function agendarSeNecessario(dadosVisita){
   }
 }
 
+// Marca os chips de produto e o campo "Outros" a partir da string salva
+// (ex: "Parafusos inox, Outros: anilha especial"). Usada tanto ao editar
+// uma visita quanto ao iniciar uma nova a partir de um cliente existente.
+function preencherProdutosNoFormulario(produtosString){
+  produtosSelecionados = [];
+  document.querySelectorAll('#f-produtos .chip').forEach(c=>c.classList.remove('selected'));
+  let outrosTexto = '';
+  (produtosString||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(item=>{
+    if(item.toLowerCase().startsWith('outros:')){
+      outrosTexto = item.slice(item.indexOf(':')+1).trim();
+      produtosSelecionados.push('Outros');
+      const chipOutros = document.querySelector('#f-produtos .chip[data-v="Outros"]');
+      if(chipOutros) chipOutros.classList.add('selected');
+    } else {
+      const chip = document.querySelector('#f-produtos .chip[data-v="'+item.replace(/"/g,'')+'"]');
+      if(chip){ chip.classList.add('selected'); produtosSelecionados.push(item); }
+    }
+  });
+  document.getElementById('f-produtos-outros').value = outrosTexto;
+}
+
 function editarVisita(id){
   const lista = pegarVisitas();
   const v = lista.find(x=>String(x.id)===String(id));
@@ -1143,21 +1164,7 @@ function editarVisita(id){
   document.getElementById('f-status').value = v.status || 'Prospecção';
 
   // produtos (chips)
-  produtosSelecionados = [];
-  document.querySelectorAll('#f-produtos .chip').forEach(c=>c.classList.remove('selected'));
-  let outrosTexto = '';
-  (v.produtos||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(item=>{
-    if(item.toLowerCase().startsWith('outros:')){
-      outrosTexto = item.slice(item.indexOf(':')+1).trim();
-      produtosSelecionados.push('Outros');
-      const chipOutros = document.querySelector('#f-produtos .chip[data-v="Outros"]');
-      if(chipOutros) chipOutros.classList.add('selected');
-    } else {
-      const chip = document.querySelector('#f-produtos .chip[data-v="'+item.replace(/"/g,'')+'"]');
-      if(chip){ chip.classList.add('selected'); produtosSelecionados.push(item); }
-    }
-  });
-  document.getElementById('f-produtos-outros').value = outrosTexto;
+  preencherProdutosNoFormulario(v.produtos);
 
   // potencial
   potencialSelecionado = v.potencial || '';
