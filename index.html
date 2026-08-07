@@ -282,6 +282,12 @@
     </div>
     <button class="icon-btn" onclick="abrirConfig()" title="Configurações">⚙️</button>
   </div>
+  <div style="display:flex;gap:8px;align-items:center;padding:8px 14px;background:rgba(255,255,255,.12);">
+    <span style="font-size:.8rem;font-weight:600;white-space:nowrap;">Vendedor:</span>
+    <select id="sel-vendedor" onchange="trocarVendedor()" style="flex:1;min-width:0;padding:8px;border-radius:8px;border:none;font-size:15px;background:#fff;color:#222;">
+    </select>
+    <button class="icon-btn" onclick="atualizarListaVendedores()" title="Atualizar lista da planilha">🔄</button>
+  </div>
   <div class="tabs">
     <div class="tab active" id="btn-tab-nova" onclick="mostrarTab('nova')">Nova Visita</div>
     <div class="tab" id="btn-tab-historico" onclick="mostrarTab('historico')">Histórico</div>
@@ -923,6 +929,107 @@ function carregarVendedor(){
 
 function vendedorAtivo(){
   return String(localStorage.getItem(CHAVE_VENDEDOR) || '').trim();
+}
+
+const CHAVE_CACHE_VENDEDORES = 'dapco_vendedores_v1';
+const OPCAO_OUTRO = '__outro__';
+
+function vendedoresEmCache(){
+  try{
+    const lista = JSON.parse(localStorage.getItem(CHAVE_CACHE_VENDEDORES));
+    return Array.isArray(lista) ? lista : [];
+  }catch(e){ return []; }
+}
+
+// A uniao de tres fontes: planilha (cache), gavetas locais e o vendedor
+// ativo. As duas ultimas garantem que o menu funcione sem internet.
+// Usada tanto pelo seletor do topo quanto pelo modal de importar.
+function nomesConhecidos(){
+  const porSlug = new Map();
+  vendedoresEmCache().concat(listarVendedoresLocais()).forEach(nome=>{
+    const limpo = String(nome || '').trim();
+    if(limpo && !porSlug.has(slugVendedor(limpo))) porSlug.set(slugVendedor(limpo), limpo);
+  });
+  const ativo = vendedorAtivo();
+  if(ativo && !porSlug.has(slugVendedor(ativo))) porSlug.set(slugVendedor(ativo), ativo);
+  return Array.from(porSlug.values())
+    .sort((a,b)=> a.localeCompare(b, 'pt-BR', {sensitivity:'base'}));
+}
+
+function montarSeletorVendedor(){
+  const sel = document.getElementById('sel-vendedor');
+  const ativo = vendedorAtivo();
+  const nomes = nomesConhecidos();
+
+  sel.innerHTML = '';
+  if(!ativo){
+    const vazio = document.createElement('option');
+    vazio.value = '';
+    vazio.textContent = '— escolha seu nome —';
+    sel.appendChild(vazio);
+  }
+  nomes.forEach(nome=>{
+    const op = document.createElement('option');
+    op.value = nome;
+    op.textContent = nome;
+    sel.appendChild(op);
+  });
+  const outro = document.createElement('option');
+  outro.value = OPCAO_OUTRO;
+  outro.textContent = '+ Outro vendedor…';
+  sel.appendChild(outro);
+
+  sel.value = ativo || '';
+}
+
+function definirVendedorAtivo(nome){
+  const limpo = String(nome || '').trim();
+  localStorage.setItem(CHAVE_VENDEDOR, limpo);
+  registrarVendedorLocal(limpo);
+  document.getElementById('f-vendedor').value = limpo;
+  // Sair do modo de edicao: o registro sendo editado e de outra gaveta.
+  if(idEmEdicao !== null) sairModoEdicao();
+  montarSeletorVendedor();
+  renderHistorico();
+}
+
+function trocarVendedor(){
+  const sel = document.getElementById('sel-vendedor');
+  if(sel.value === OPCAO_OUTRO){
+    const nome = (prompt('Nome do vendedor:') || '').trim();
+    if(!nome){ montarSeletorVendedor(); return; }
+    definirVendedorAtivo(nome);
+    toast('Vendedor: ' + nome);
+    return;
+  }
+  definirVendedorAtivo(sel.value);
+  if(sel.value) toast('Vendedor: ' + sel.value);
+}
+
+async function buscarVendedoresDaPlanilha(){
+  const url = localStorage.getItem(CHAVE_SHEET_URL);
+  if(!url) return [];
+  const separador = url.includes('?') ? '&' : '?';
+  const resposta = await fetch(url + separador + 'acao=vendedores');
+  const texto = await resposta.text();
+  if(texto.trim().startsWith('<')) throw new Error('A planilha respondeu HTML — republique o Apps Script (Nova versão).');
+  const dados = JSON.parse(texto);
+  if(!dados || !dados.ok) throw new Error((dados && dados.erro) || 'Erro ao buscar vendedores');
+  return dados.vendedores || [];
+}
+
+async function atualizarListaVendedores(){
+  const url = localStorage.getItem(CHAVE_SHEET_URL);
+  if(!url){ toast('⚠️ Configure a URL do Google Sheets em Configurações'); return; }
+  toast('Buscando vendedores...');
+  try{
+    const nomes = await buscarVendedoresDaPlanilha();
+    localStorage.setItem(CHAVE_CACHE_VENDEDORES, JSON.stringify(nomes));
+    montarSeletorVendedor();
+    toast(`${nomes.length} vendedor(es) na planilha`);
+  }catch(err){
+    toast('⚠️ ' + err.message);
+  }
 }
 
 function pegarVisitas(){
@@ -1743,6 +1850,7 @@ function exportarCSV(){
 // inicialização
 const resultadoMigracao = migrarParaGavetas();
 carregarVendedor();
+montarSeletorVendedor();
 document.getElementById('f-ordem').value = ordemAtual();
 document.getElementById('f-datahora').value = agoraLocalISO();
 if(resultadoMigracao.migrou){
