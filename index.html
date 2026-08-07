@@ -470,28 +470,131 @@
       6. Copie a URL que termina em <code>/exec</code> e cole no campo acima.<br>
       7. <b>Sempre que editar o script depois</b>, precisa publicar de novo: Implantar → Gerenciar implantações → ícone de lápis → "Nova versão" → Implantar. Só salvar o script (Ctrl+S) não atualiza o link já publicado.
     </p>
-    <textarea readonly style="font-family:monospace;font-size:.72rem;min-height:220px;" onclick="this.select()">function doGet(e) {
+    <textarea readonly style="font-family:monospace;font-size:.72rem;min-height:220px;" onclick="this.select()">// ===== INICIO NUCLEO APPS SCRIPT =====
+// Funcoes puras: nao usam SpreadsheetApp. Testadas por tests/appsscript.test.mjs.
+
+var CABECALHO_PADRAO = ['ID','Vendedor','Cliente','Cidade','UF','Contato','Cargo',
+  'Telefone','Data/Hora','Status','Produtos','Potencial','Valor',
+  'Objeções','Próxima Ação','Prazo','Observações','Recebido em'];
+
+// Nome da coluna na planilha -> nome do campo no app.
+var MAPA_COLUNAS = {
+  'ID':'id', 'Vendedor':'vendedor', 'Cliente':'cliente', 'Cidade':'cidade',
+  'UF':'uf', 'Contato':'contato', 'Cargo':'cargo', 'Telefone':'telefone',
+  'Data/Hora':'datahora', 'Status':'status', 'Produtos':'produtos',
+  'Potencial':'potencial', 'Valor':'valor', 'Objeções':'objecoes',
+  'Próxima Ação':'proximaAcao', 'Prazo':'prazo', 'Horário':'prazoHora',
+  'Observações':'obs'
+};
+
+function indicesPorCabecalho(cabecalho){
+  var mapa = {};
+  for(var c = 0; c < cabecalho.length; c++){
+    mapa[String(cabecalho[c]).trim()] = c;
+  }
+  return mapa;
+}
+
+function listarVendedoresDaMatriz(valores){
+  if(!valores || valores.length < 2) return [];
+  var idx = indicesPorCabecalho(valores[0]);
+  if(idx['Vendedor'] === undefined) return [];
+  var vistos = {};
+  for(var i = 1; i < valores.length; i++){
+    var nome = String(valores[i][idx['Vendedor']] || '').trim();
+    if(nome) vistos[nome] = true;
+  }
+  return Object.keys(vistos).sort(function(a,b){
+    return a.localeCompare(b, 'pt-BR', {sensitivity:'base'});
+  });
+}
+
+// Devolve o indice da linha na matriz (0 = cabecalho), ou -1.
+// Se houver duplicatas, devolve a primeira: o script nunca apaga linhas.
+function acharLinhaPorId(valores, idxId, id){
+  var alvo = String(id == null ? '' : id).trim();
+  if(!alvo) return -1;
+  for(var i = 1; i < valores.length; i++){
+    if(String(valores[i][idxId] == null ? '' : valores[i][idxId]).trim() === alvo){
+      return i;
+    }
+  }
+  return -1;
+}
+
+// Monta a linha posicionando cada valor pelo NOME da coluna, nunca pela ordem.
+// Assim, acrescentar coluna na planilha nao desloca mais nada.
+function montarLinhaPorCabecalho(cabecalho, dados, recebidoEmExistente){
+  var temHorario = false;
+  for(var k = 0; k < cabecalho.length; k++){
+    if(String(cabecalho[k]).trim() === 'Horário') temHorario = true;
+  }
+
+  // Planilha sem coluna Horario: o horario vai no fim de Observacoes.
+  var obs = String(dados.obs == null ? '' : dados.obs);
+  var hora = String(dados.prazoHora == null ? '' : dados.prazoHora).trim();
+  if(!temHorario && hora){
+    obs = obs ? (obs + ' · Horário: ' + hora) : ('Horário: ' + hora);
+  }
+
+  var linha = [];
+  for(var c = 0; c < cabecalho.length; c++){
+    var nome = String(cabecalho[c]).trim();
+
+    if(nome === 'Recebido em'){
+      linha.push(recebidoEmExistente ? recebidoEmExistente : new Date());
+      continue;
+    }
+    if(nome === 'Observações'){
+      linha.push(obs);
+      continue;
+    }
+
+    var campo = MAPA_COLUNAS[nome];
+    if(campo === undefined || dados[campo] === undefined || dados[campo] === null){
+      linha.push('');
+    } else {
+      linha.push(dados[campo]);
+    }
+  }
+  return linha;
+}
+// ===== FIM NUCLEO APPS SCRIPT =====
+
+function pegarAba(){
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  return ss.getSheetByName('Visitas') || ss.insertSheet('Visitas');
+}
+
+function responder(obj){
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
   try {
     var params = (e && e.parameter) ? e.parameter : {};
 
-    // ?acao=listar&vendedor=Nome -> devolve as visitas daquele vendedor
-    // (usado pelo botão "Importar da planilha" do app)
-    if (params.acao === 'listar') {
-      var ss = SpreadsheetApp.getActiveSpreadsheet();
-      var sheet = ss.getSheetByName('Visitas');
-      if (!sheet || sheet.getLastRow() < 2) {
-        return ContentService.createTextOutput(JSON.stringify({ok:true, visitas:[]}))
-          .setMimeType(ContentService.MimeType.JSON);
-      }
+    // ?acao=vendedores -> lista de nomes distintos, para montar o menu do app
+    if (params.acao === 'vendedores') {
+      var abaV = pegarAba();
+      if (abaV.getLastRow() < 2) return responder({ok:true, vendedores:[]});
+      return responder({ok:true, vendedores: listarVendedoresDaMatriz(abaV.getDataRange().getValues())});
+    }
 
-      var valores = sheet.getDataRange().getValues();
+    // ?acao=listar&vendedor=Nome -> as visitas daquele vendedor
+    if (params.acao === 'listar') {
+      var aba = pegarAba();
+      if (aba.getLastRow() < 2) return responder({ok:true, visitas:[]});
+
+      var valores = aba.getDataRange().getValues();
       var cabecalho = valores[0];
       var filtro = String(params.vendedor || '').trim().toLowerCase();
       var visitas = [];
 
       for (var i = 1; i < valores.length; i++) {
         var obj = {};
-        for (var c = 0; c < cabecalho.length; c++) obj[cabecalho[c]] = valores[i][c];
+        for (var c = 0; c < cabecalho.length; c++) obj[String(cabecalho[c]).trim()] = valores[i][c];
 
         var vendedorLinha = String(obj['Vendedor'] || '').trim().toLowerCase();
         if (filtro && vendedorLinha !== filtro) continue;
@@ -506,46 +609,58 @@
         });
       }
 
-      return ContentService.createTextOutput(JSON.stringify({ok:true, visitas:visitas}))
-        .setMimeType(ContentService.MimeType.JSON);
+      return responder({ok:true, visitas:visitas});
     }
 
-    return ContentService.createTextOutput(JSON.stringify({ok:true, info:'Apps Script no ar'}))
-      .setMimeType(ContentService.MimeType.JSON);
+    return responder({ok:true, info:'Apps Script no ar'});
 
   } catch (erro) {
-    return ContentService.createTextOutput(JSON.stringify({ok:false, erro: String(erro)}))
-      .setMimeType(ContentService.MimeType.JSON);
+    return responder({ok:false, erro: String(erro)});
   }
 }
 
 function doPost(e) {
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName('Visitas') || ss.insertSheet('Visitas');
+    var sheet = pegarAba();
     var d = JSON.parse(e.postData.contents);
 
     if (sheet.getLastRow() === 0) {
-      sheet.appendRow(['ID','Vendedor','Cliente','Cidade','UF','Contato','Cargo',
-        'Telefone','Data/Hora','Status','Produtos','Potencial','Valor',
-        'Objeções','Próxima Ação','Prazo','Horário','Observações','Recebido em']);
+      sheet.appendRow(CABECALHO_PADRAO);
     }
 
-    sheet.appendRow([d.id, d.vendedor, d.cliente, d.cidade, d.uf, d.contato,
-      d.cargo, d.telefone, d.datahora, d.status, d.produtos, d.potencial,
-      d.valor, d.objecoes, d.proximaAcao, d.prazo, d.prazoHora, d.obs, new Date()]);
+    var valores = sheet.getDataRange().getValues();
+    var cabecalho = valores[0];
+    var idx = indicesPorCabecalho(cabecalho);
 
-    return ContentService.createTextOutput(JSON.stringify({ok:true}))
-      .setMimeType(ContentService.MimeType.JSON);
+    // Sem coluna ID nao da para atualizar: acrescenta, como antes.
+    if (idx['ID'] === undefined) {
+      sheet.appendRow(montarLinhaPorCabecalho(cabecalho, d, null));
+      return responder({ok:true, acao:'inserido'});
+    }
+
+    var linha = acharLinhaPorId(valores, idx['ID'], d.id);
+
+    if (linha === -1) {
+      sheet.appendRow(montarLinhaPorCabecalho(cabecalho, d, null));
+      return responder({ok:true, acao:'inserido'});
+    }
+
+    // Atualizacao: preserva o "Recebido em" original.
+    var recebidoOriginal = (idx['Recebido em'] !== undefined)
+      ? valores[linha][idx['Recebido em']] : null;
+
+    sheet.getRange(linha + 1, 1, 1, cabecalho.length)
+      .setValues([montarLinhaPorCabecalho(cabecalho, d, recebidoOriginal)]);
+
+    return responder({ok:true, acao:'atualizado'});
 
   } catch (erro) {
-    return ContentService.createTextOutput(JSON.stringify({ok:false, erro: String(erro)}))
-      .setMimeType(ContentService.MimeType.JSON);
+    return responder({ok:false, erro: String(erro)});
   }
 }</textarea>
     <p class="hint">Toque no código para selecionar tudo e copiar.</p>
-    <p class="hint">💡 Teste rápido: abra a URL <code>/exec</code> direto no navegador do celular. Se aparecer <code>{"ok":true,...}</code>, a implantação está correta. Se aparecer uma tela de login do Google ou erro, o problema é o passo 5 ou 7 acima.</p>
-    <p class="hint">⬆️ Este código já inclui a função usada pelo botão "Importar da planilha" (histórico → Importar), que traz para o celular as visitas de um vendedor específico já registradas na planilha. Se você atualizou um script antigo, não esqueça do passo 7 (Nova versão) para o botão funcionar.</p>
+    <p class="hint">💡 Teste rápido: abra a URL <code>/exec?acao=vendedores</code> no navegador. Se aparecer a lista de nomes em JSON, a implantação está correta. Se aparecer tela de login do Google ou erro, o problema é o passo 5 ou 7 acima.</p>
+    <p class="hint">⬆️ Este código inclui o menu de vendedores, a importação por vendedor e a gravação que <strong>atualiza</strong> a linha existente em vez de duplicar. Depois de colar, não esqueça o passo 7 (Nova versão) — sem isso nada disso funciona.</p>
 
     <button class="btn btn-secondary" onclick="fecharConfig()" style="margin-top:14px;">Fechar</button>
   </div>
