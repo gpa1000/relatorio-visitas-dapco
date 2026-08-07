@@ -676,8 +676,8 @@ function doPost(e) {
   <div class="modal-card">
     <h2>⬆️ Importar da planilha</h2>
     <p class="hint">Escolha de qual vendedor você quer trazer as visitas já registradas na planilha do Google Sheets para este celular. Visitas que já existem aqui (mesmo ID) não são duplicadas.</p>
-    <label class="req">Nome do vendedor</label>
-    <input type="text" id="imp-vendedor" placeholder="Ex: Adriano Fuck">
+    <label class="req">Vendedor</label>
+    <select id="imp-vendedor" style="width:100%;padding:11px;border-radius:10px;border:1.5px solid var(--borda);font-size:16px;background:#fff;"></select>
     <div class="btn-row" style="margin-top:14px;">
       <button class="btn btn-primary" onclick="confirmarImportar()">Importar</button>
       <button class="btn btn-secondary" onclick="fecharImportar()">Cancelar</button>
@@ -1598,7 +1598,24 @@ function abrirImportar(){
     toast('⚠️ Configure a URL do Google Sheets em Configurações antes de importar');
     return;
   }
-  document.getElementById('imp-vendedor').value = localStorage.getItem(CHAVE_VENDEDOR) || '';
+
+  const sel = document.getElementById('imp-vendedor');
+  const ativo = vendedorAtivo();
+
+  sel.innerHTML = '';
+  nomesConhecidos().forEach(nome=>{
+    const op = document.createElement('option');
+    op.value = nome;
+    op.textContent = nome;
+    sel.appendChild(op);
+  });
+
+  if(sel.options.length === 0){
+    toast('⚠️ Nenhum vendedor conhecido — toque no 🔄 ao lado do menu para buscar da planilha');
+    return;
+  }
+
+  sel.value = ativo || sel.options[0].value;
   document.getElementById('modal-importar').classList.add('open');
 }
 
@@ -1622,6 +1639,10 @@ async function confirmarImportar(){
     return;
   }
   fecharImportar();
+  // Importar "Samuel" com "Adriano" ativo jogaria os dados na gaveta errada.
+  if(slugVendedor(vendedor) !== slugVendedor(vendedorAtivo())){
+    definirVendedorAtivo(vendedor);
+  }
   toast('Buscando visitas de ' + vendedor + '...');
 
   try{
@@ -1686,6 +1707,7 @@ async function confirmarImportar(){
     });
 
     salvarVisitas(lista);
+    montarSeletorVendedor();
     renderHistorico();
     toast(`✅ ${importadas} visita(s) importada(s) de ${encontradas.length} encontrada(s) para "${vendedor}"`);
 
