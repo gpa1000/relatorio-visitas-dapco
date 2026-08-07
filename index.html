@@ -562,6 +562,47 @@ const CHAVE_VISITAS = 'dapco_visitas_v1';
 const CHAVE_VENDEDOR = 'dapco_vendedor_v1';
 const CHAVE_SHEET_URL = 'dapco_sheet_url_v1';
 
+// ===== INICIO NUCLEO TESTAVEL =====
+// Funcoes puras: nao tocam em DOM nem em rede, so em localStorage.
+// O arquivo tests/nucleo.test.mjs recorta este bloco e testa em Node.
+// Nao use document, fetch ou window aqui dentro.
+
+const CHAVE_VISITAS_BASE = 'dapco_visitas_v1';
+const CHAVE_BACKUP = 'dapco_visitas_v1__backup';
+const CHAVE_MIGRACAO = 'dapco_migracao_gavetas_v1';
+const CHAVE_REGISTRO_VENDEDORES = 'dapco_vendedores_locais_v1';
+
+// "Adriano Fuck", "adriano fuck " e "ADRIANO FUCK" viram todos adriano-fuck,
+// para que variacoes de digitacao caiam na mesma gaveta.
+function slugVendedor(nome){
+  const limpo = String(nome == null ? '' : nome)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // tira acentos
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')                       // tira pontuacao
+    .trim()
+    .replace(/\s+/g, '-');                              // espacos viram hifen
+  return limpo || 'sem-vendedor';
+}
+
+function chaveGaveta(nome){
+  return CHAVE_VISITAS_BASE + '::' + slugVendedor(nome);
+}
+
+// Junta duas listas de visitas sem repetir ID. O que ja existe em "atual" vence.
+function mesclarListasPorId(atual, novas){
+  const resultado = Array.isArray(atual) ? atual.slice() : [];
+  const vistos = new Set(resultado.map(v => String(v && v.id)));
+  (Array.isArray(novas) ? novas : []).forEach(v => {
+    const id = String(v && v.id);
+    if(vistos.has(id)) return;
+    vistos.add(id);
+    resultado.push(v);
+  });
+  return resultado;
+}
+
+// ===== FIM NUCLEO TESTAVEL =====
+
 let produtosSelecionados = [];
 let potencialSelecionado = '';
 let reconhecimentoAtivo = null;
