@@ -1188,6 +1188,29 @@ function editarVisita(id){
   toast('✏️ Editando visita de ' + (v.cliente||''));
 }
 
+// Inicia uma visita NOVA copiando os dados de identificacao do cliente de
+// uma visita ja existente. Nao edita a visita antiga: idEmEdicao continua
+// null, entao salvar cria um registro novo.
+function novaVisitaMesmoCliente(id){
+  const lista = pegarVisitas();
+  const v = lista.find(x=>String(x.id)===String(id));
+  if(!v) return;
+
+  sairModoEdicao(); // garante que nao ha edicao em andamento e zera o formulario
+
+  document.getElementById('f-cliente').value = v.cliente||'';
+  document.getElementById('f-cidade').value = v.cidade||'';
+  document.getElementById('f-uf').value = v.uf||'';
+  document.getElementById('f-contato').value = v.contato||'';
+  document.getElementById('f-cargo').value = v.cargo||'';
+  document.getElementById('f-telefone').value = v.telefone||'';
+  preencherProdutosNoFormulario(v.produtos);
+
+  mostrarTab('nova');
+  window.scrollTo({top:0, behavior:'smooth'});
+  toast('🆕 Novo atendimento para ' + (v.cliente||'') + ' — revise e salve');
+}
+
 function sairModoEdicao(){
   idEmEdicao = null;
   document.getElementById('banner-edicao').style.display = 'none';
@@ -1308,6 +1331,7 @@ function renderHistorico(){
       </dl>
       <div class="visit-actions">
         <button onclick="editarVisita(${idJs})">✏️ Editar</button>
+        <button onclick="novaVisitaMesmoCliente(${idJs})">🆕 Nova Visita</button>
         ${v.telefone ? `<button class="whatsapp-btn" onclick="abrirWhatsApp(${idJs})">💬 WhatsApp</button>` : ''}
         ${(v.proximaAcao && v.prazo) ? `<button onclick="abrirAgendaPorId(${idJs})">📅 Agenda</button>` : ''}
         <button onclick="compartilharVisita(${idJs})">📤 Compartilhar</button>
