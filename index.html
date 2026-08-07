@@ -577,15 +577,15 @@ function doGet(e) {
 
     // ?acao=vendedores -> lista de nomes distintos, para montar o menu do app
     if (params.acao === 'vendedores') {
-      var abaV = pegarAba();
-      if (abaV.getLastRow() < 2) return responder({ok:true, vendedores:[]});
+      var abaV = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Visitas');
+      if (!abaV || abaV.getLastRow() < 2) return responder({ok:true, vendedores:[]});
       return responder({ok:true, vendedores: listarVendedoresDaMatriz(abaV.getDataRange().getValues())});
     }
 
     // ?acao=listar&vendedor=Nome -> as visitas daquele vendedor
     if (params.acao === 'listar') {
-      var aba = pegarAba();
-      if (aba.getLastRow() < 2) return responder({ok:true, visitas:[]});
+      var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Visitas');
+      if (!aba || aba.getLastRow() < 2) return responder({ok:true, visitas:[]});
 
       var valores = aba.getDataRange().getValues();
       var cabecalho = valores[0];
