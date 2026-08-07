@@ -946,7 +946,7 @@ function vendedoresEmCache(){
 // Usada tanto pelo seletor do topo quanto pelo modal de importar.
 function nomesConhecidos(){
   const porSlug = new Map();
-  vendedoresEmCache().concat(listarVendedoresLocais()).forEach(nome=>{
+  listarVendedoresLocais().concat(vendedoresEmCache()).forEach(nome=>{
     const limpo = String(nome || '').trim();
     if(limpo && !porSlug.has(slugVendedor(limpo))) porSlug.set(slugVendedor(limpo), limpo);
   });
