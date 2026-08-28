@@ -176,3 +176,48 @@ test('emailValido recusa texto que nao e e-mail', () => {
   assert.equal(n.emailValido(''), false);
   assert.equal(n.emailValido(null), false);
 });
+
+// ===== LINK_CATALOGO =====
+
+test('LINK_CATALOGO aponta para a pagina de catalogo do site da Dapco', () => {
+  const n = nucleo();
+  assert.equal(n.LINK_CATALOGO, 'https://www.dapco.com.br/catalogo');
+});
+
+// ===== registrarApresentacaoEnviada =====
+
+test('registrarApresentacaoEnviada carimba a data do envio', () => {
+  const n = nucleo();
+  const r = n.registrarApresentacaoEnviada({ id: 'X-1' }, '2026-08-27T14:30:00.000Z');
+  assert.equal(r.apresentacaoEnviadaEm, '2026-08-27T14:30:00.000Z');
+});
+
+test('registrarApresentacaoEnviada marca a visita para ressincronizar', () => {
+  const n = nucleo();
+  const r = n.registrarApresentacaoEnviada({ id: 'X-1', sincronizado: true }, '2026-08-27T14:30:00.000Z');
+  assert.equal(r.sincronizado, false);
+});
+
+test('registrarApresentacaoEnviada preserva o resto da visita', () => {
+  const n = nucleo();
+  const v = { id: 'X-1', cliente: 'ACME', email: 'a@b.com.br', obs: 'levar amostra' };
+  const r = n.registrarApresentacaoEnviada(v, '2026-08-27T14:30:00.000Z');
+  assert.equal(r.cliente, 'ACME');
+  assert.equal(r.email, 'a@b.com.br');
+  assert.equal(r.obs, 'levar amostra');
+});
+
+test('registrarApresentacaoEnviada nao altera o objeto original', () => {
+  const n = nucleo();
+  const v = { id: 'X-1', sincronizado: true };
+  n.registrarApresentacaoEnviada(v, '2026-08-27T14:30:00.000Z');
+  assert.equal(v.apresentacaoEnviadaEm, undefined);
+  assert.equal(v.sincronizado, true);
+});
+
+test('reenvio sobrescreve com a data mais recente', () => {
+  const n = nucleo();
+  const primeiro = n.registrarApresentacaoEnviada({ id: 'X-1' }, '2026-08-01T10:00:00.000Z');
+  const segundo = n.registrarApresentacaoEnviada(primeiro, '2026-08-27T14:30:00.000Z');
+  assert.equal(segundo.apresentacaoEnviadaEm, '2026-08-27T14:30:00.000Z');
+});

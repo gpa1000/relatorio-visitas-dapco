@@ -473,13 +473,15 @@
       <button class="btn btn-secondary" onclick="testarSincronizacao()">Testar conexão</button>
     </div>
 
-    <h3>Planilha que já existe: coluna E-mail</h3>
+    <h3>Planilha que já existe: duas colunas novas</h3>
     <p class="hint">
-      O botão “Apresentação” precisa do e-mail do comprador. Se a sua planilha já está rodando,
-      adicione uma coluna com o cabeçalho exato <b>E-mail</b> (qualquer posição serve — o script
-      acha pelo nome, não pela ordem) e republique o Apps Script abaixo em
-      <b>Implantar → Gerenciar implantações → lápis → Nova versão</b>.
-      Sem isso, o e-mail fica só no celular do vendedor e não aparece para o gerente.
+      O botão “Apresentação” usa duas colunas que não existiam antes. Se a sua planilha já está
+      rodando, acrescente as duas com o cabeçalho <b>exatamente</b> assim:<br>
+      • <b>E-mail</b> — endereço do comprador, sem ele o botão não aparece.<br>
+      • <b>Apresentação enviada em</b> — data e hora do último envio, preenchida sozinha no clique.<br>
+      Qualquer posição serve: o script acha a coluna pelo nome, não pela ordem. Depois republique o
+      Apps Script abaixo em <b>Implantar → Gerenciar implantações → lápis → Nova versão</b>.
+      Sem isso, os dois campos ficam só no celular do vendedor e não chegam ao gerente.
     </p>
 
     <h3>Como criar a planilha do gerente</h3>
@@ -497,7 +499,7 @@
 
 var CABECALHO_PADRAO = ['ID','Vendedor','Cliente','Cidade','UF','Contato','Cargo',
   'Telefone','E-mail','Data/Hora','Status','Produtos','Potencial','Valor',
-  'Objeções','Próxima Ação','Prazo','Observações','Recebido em'];
+  'Objeções','Próxima Ação','Prazo','Observações','Apresentação enviada em','Recebido em'];
 
 // Nome da coluna na planilha -> nome do campo no app.
 var MAPA_COLUNAS = {
@@ -506,7 +508,7 @@ var MAPA_COLUNAS = {
   'E-mail':'email', 'Data/Hora':'datahora', 'Status':'status', 'Produtos':'produtos',
   'Potencial':'potencial', 'Valor':'valor', 'Objeções':'objecoes',
   'Próxima Ação':'proximaAcao', 'Prazo':'prazo', 'Horário':'prazoHora',
-  'Observações':'obs'
+  'Observações':'obs', 'Apresentação enviada em':'apresentacaoEnviadaEm'
 };
 
 function indicesPorCabecalho(cabecalho){
@@ -628,7 +630,8 @@ function doGet(e) {
           datahora: obj['Data/Hora'],
           status: obj['Status'], produtos: obj['Produtos'], potencial: obj['Potencial'],
           valor: obj['Valor'], objecoes: obj['Objeções'], proximaAcao: obj['Próxima Ação'],
-          prazo: obj['Prazo'], prazoHora: obj['Horário'], obs: obj['Observações']
+          prazo: obj['Prazo'], prazoHora: obj['Horário'], obs: obj['Observações'],
+          apresentacaoEnviadaEm: obj['Apresentação enviada em']
         });
       }
 
@@ -870,9 +873,10 @@ function ordenarVisitas(lista, modo){
 
 // ===== E-mail de apresentacao =====
 
-// Endereco publico do catalogo. mailto: nao carrega anexo, entao o PDF vai
-// como link — por isso ele precisa estar hospedado junto do app no Pages.
-const LINK_CATALOGO = 'https://gpa1000.github.io/relatorio-visitas-dapco/catalogo-dapco-2023.pdf';
+// mailto: nao carrega anexo, entao o catalogo vai como link. Aponta para a
+// pagina do site: quem mantem o catalogo atualizado e o marketing, e o link
+// no e-mail do vendedor nao precisa mudar junto.
+const LINK_CATALOGO = 'https://www.dapco.com.br/catalogo';
 
 function saudacaoPorHora(hora){
   const h = Number(hora);
@@ -936,6 +940,12 @@ function montarEmailApresentacao(v, opcoes){
     assunto: assunto,
     corpo: linhas.join('\n')
   };
+}
+
+// Devolve uma copia da visita com a data do envio. Sobrescreve a data
+// anterior de proposito: para o follow-up, o que interessa e o ultimo envio.
+function registrarApresentacaoEnviada(v, quandoISO){
+  return { ...v, apresentacaoEnviadaEm: quandoISO, sincronizado: false };
 }
 
 function linkMailtoApresentacao(v, opcoes){
@@ -1425,6 +1435,7 @@ function renderHistorico(){
         <dt>Contato</dt><dd>${escapeHTML(v.contato||'-')} ${v.cargo? '('+escapeHTML(v.cargo)+')':''}</dd>
         <dt>Telefone</dt><dd>${escapeHTML(v.telefone||'-')}</dd>
         <dt>E-mail</dt><dd>${escapeHTML(v.email||'-')}</dd>
+        ${v.apresentacaoEnviadaEm ? `<dt>Apresentação enviada</dt><dd>${escapeHTML(formatarDataHora(v.apresentacaoEnviadaEm))}</dd>` : ''}
         <dt>Produtos apresentados</dt><dd>${escapeHTML(v.produtos||'-')}</dd>
         <dt>Valor estimado</dt><dd>${v.valor ? 'R$ '+formatarMoeda(v.valor) : '-'}</dd>
         <dt>Objeções / dificuldades</dt><dd>${escapeHTML(v.objecoes||'-')}</dd>
@@ -1435,7 +1446,7 @@ function renderHistorico(){
         <button onclick="editarVisita(${idJs})">✏️ Editar</button>
         <button onclick="novaVisitaMesmoCliente(${idJs})">🆕 Nova Visita</button>
         ${v.telefone ? `<button class="whatsapp-btn" onclick="abrirWhatsApp(${idJs})">💬 WhatsApp</button>` : ''}
-        ${v.email ? `<button class="email-btn" onclick="abrirApresentacao(${idJs})">📧 Apresentação</button>` : ''}
+        ${v.email ? `<button class="email-btn" onclick="abrirApresentacao(${idJs})">📧 ${v.apresentacaoEnviadaEm ? 'Reenviar' : 'Apresentação'}</button>` : ''}
         ${(v.proximaAcao && v.prazo) ? `<button onclick="abrirAgendaPorId(${idJs})">📅 Agenda</button>` : ''}
         <button onclick="compartilharVisita(${idJs})">📤 Compartilhar</button>
         <button onclick="excluirVisita(${idJs})">🗑️ Excluir</button>
@@ -1580,6 +1591,13 @@ function abrirApresentacao(id){
 
   const link = linkMailtoApresentacao(v, { linkCatalogo: LINK_CATALOGO });
   if(!link) return;
+
+  // Grava ANTES de navegar: depois do location.href a pagina pode nem voltar.
+  const idx = lista.findIndex(x=>String(x.id)===String(id));
+  lista[idx] = registrarApresentacaoEnviada(v, new Date().toISOString());
+  salvarVisitas(lista);
+  renderHistorico();
+  tentarSincronizarPendentes(false);
 
   toast('📧 Abrindo o e-mail — revise antes de enviar');
   // location.href, e nao window.open: e assim que o celular entrega o link
@@ -1869,6 +1887,7 @@ async function confirmarImportar(){
         proximaAcao: row.proximaAcao || '',
         prazo: row.prazo || '',
         prazoHora: row.prazoHora || '',
+        apresentacaoEnviadaEm: row.apresentacaoEnviadaEm || '',
         obs: row.obs || '',
         criadoEm: new Date().toISOString(),
         sincronizado: true
@@ -2011,8 +2030,8 @@ function exportarCSV(){
   const lista = pegarVisitas();
   if(lista.length===0){ toast('Não há visitas para exportar'); return; }
 
-  const colunas = ['vendedor','cliente','cidade','uf','contato','cargo','telefone','email','datahora','status','produtos','potencial','valor','objecoes','proximaAcao','prazo','prazoHora','obs'];
-  const cabecalho = ['Vendedor','Cliente','Cidade','UF','Contato','Cargo','Telefone','E-mail','Data/Hora','Status','Produtos','Potencial','Valor Estimado','Objeções','Próxima Ação','Prazo','Horário','Observações'];
+  const colunas = ['vendedor','cliente','cidade','uf','contato','cargo','telefone','email','datahora','status','produtos','potencial','valor','objecoes','proximaAcao','prazo','prazoHora','obs','apresentacaoEnviadaEm'];
+  const cabecalho = ['Vendedor','Cliente','Cidade','UF','Contato','Cargo','Telefone','E-mail','Data/Hora','Status','Produtos','Potencial','Valor Estimado','Objeções','Próxima Ação','Prazo','Horário','Observações','Apresentação enviada em'];
 
   const linhas = [cabecalho.join(';')];
   lista.forEach(v=>{
