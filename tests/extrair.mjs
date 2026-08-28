@@ -36,7 +36,7 @@ const NOMES_NUCLEO = [
   'parseDataVisita', 'rankPotencial', 'ordenarVisitas',
   'saudacaoPorHora', 'primeiroNome', 'emailValido',
   'montarEmailApresentacao', 'linkMailtoApresentacao',
-  'LINK_CATALOGO', 'registrarApresentacaoEnviada',
+  'LINK_CATALOGO', 'registrarApresentacaoEnviada', 'formatarMoedaCurta',
 ];
 
 // Exporta so o que ja existe no bloco. Assim, funcao ainda nao escrita vira

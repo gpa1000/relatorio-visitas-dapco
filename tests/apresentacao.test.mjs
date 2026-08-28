@@ -221,3 +221,31 @@ test('reenvio sobrescreve com a data mais recente', () => {
   const segundo = n.registrarApresentacaoEnviada(primeiro, '2026-08-27T14:30:00.000Z');
   assert.equal(segundo.apresentacaoEnviadaEm, '2026-08-27T14:30:00.000Z');
 });
+
+// ===== formatarMoedaCurta (caixa de resumo) =====
+
+test('formatarMoedaCurta mostra valor pequeno por extenso', () => {
+  const n = nucleo();
+  assert.equal(n.formatarMoedaCurta(0), 'R$ 0');
+  assert.equal(n.formatarMoedaCurta(850), 'R$ 850');
+});
+
+test('formatarMoedaCurta abrevia milhar', () => {
+  const n = nucleo();
+  assert.equal(n.formatarMoedaCurta(48500), 'R$ 48,5 mil');
+  assert.equal(n.formatarMoedaCurta(9000), 'R$ 9 mil');
+  assert.equal(n.formatarMoedaCurta(120000), 'R$ 120 mil');
+});
+
+test('formatarMoedaCurta abrevia milhao', () => {
+  const n = nucleo();
+  assert.equal(n.formatarMoedaCurta(1250000), 'R$ 1,3 mi');
+  assert.equal(n.formatarMoedaCurta(2000000), 'R$ 2 mi');
+});
+
+test('formatarMoedaCurta trata entrada invalida como zero', () => {
+  const n = nucleo();
+  assert.equal(n.formatarMoedaCurta(null), 'R$ 0');
+  assert.equal(n.formatarMoedaCurta(undefined), 'R$ 0');
+  assert.equal(n.formatarMoedaCurta('abc'), 'R$ 0');
+});
