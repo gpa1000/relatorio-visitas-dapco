@@ -560,6 +560,13 @@
       6. Copie a URL que termina em <code>/exec</code> e cole no campo acima.<br>
       7. <b>Sempre que editar o script depois</b>, precisa publicar de novo: Implantar → Gerenciar implantações → ícone de lápis → "Nova versão" → Implantar. Só salvar o script (Ctrl+S) não atualiza o link já publicado.
     </p>
+    <p class="hint" style="background:var(--tint-warning);border:1px solid var(--amarelo);color:var(--amarelo);padding:10px 12px;border-radius:var(--raio);">
+      <b>Não use o botão “Executar” do editor.</b> Ele roda a primeira função do arquivo sozinha, sem os
+      dados que ela espera, e devolve um erro do tipo
+      <code>Cannot read properties of undefined (reading 'length')</code>. Isso não quer dizer que o
+      código está errado — quer dizer que foi chamado do jeito errado. Este script só funciona quando o
+      app o chama pela URL <code>/exec</code>. Para testar, use o teste rápido logo abaixo do código.
+    </p>
     <textarea readonly style="font-family:monospace;font-size:.72rem;min-height:220px;" onclick="this.select()">// ===== INICIO NUCLEO APPS SCRIPT =====
 // Funcoes puras: nao usam SpreadsheetApp. Testadas por tests/appsscript.test.mjs.
 
@@ -751,7 +758,7 @@ function doPost(e) {
   }
 }</textarea>
     <p class="hint">Toque no código para selecionar tudo e copiar.</p>
-    <p class="hint">💡 Teste rápido: abra a URL <code>/exec?acao=vendedores</code> no navegador. Se aparecer a lista de nomes em JSON, a implantação está correta. Se aparecer tela de login do Google ou erro, o problema é o passo 5 ou 7 acima.</p>
+    <p class="hint"><b>Teste rápido (é este, não o botão Executar):</b> abra a URL <code>/exec?acao=vendedores</code> no navegador. Se aparecer a lista de nomes em JSON, a implantação está correta. Se aparecer tela de login do Google ou erro, o problema é o passo 5 ou 7 acima.</p>
     <p class="hint">⬆️ Este código inclui o menu de vendedores, a importação por vendedor e a gravação que <strong>atualiza</strong> a linha existente em vez de duplicar. Depois de colar, não esqueça o passo 7 (Nova versão) — sem isso nada disso funciona.</p>
 
     <button class="btn btn-secondary" onclick="fecharConfig()" style="margin-top:14px;">Fechar</button>
