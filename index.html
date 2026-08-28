@@ -86,7 +86,7 @@
     color:#334;
   }
   label.req::after{content:" *";color:var(--vermelho);}
-  input[type=text],input[type=number],input[type=tel],input[type=date],input[type=datetime-local],select,textarea{
+  input[type=text],input[type=number],input[type=tel],input[type=email],input[type=date],input[type=datetime-local],select,textarea{
     width:100%;
     padding:11px 10px;
     font-size:16px;
@@ -270,6 +270,8 @@
   .sync-badge.ok{background:#e7f5ec;color:var(--verde);}
   .sync-badge.pendente{background:#fdf3e0;color:var(--amarelo);}
   .whatsapp-btn{background:#e7f8ee !important;color:#1d7a3f !important;border-color:#bfe8cf !important;}
+  .email-btn{background:#eaf1fb !important;color:#1c4d8f !important;border-color:#c3d8f2 !important;}
+  .campo-invalido{border-color:#d94a4a !important;}
 </style>
 </head>
 <body>
@@ -335,6 +337,11 @@
             <input type="tel" id="f-telefone" placeholder="(00) 00000-0000">
           </div>
         </div>
+        <label>E-mail do contato</label>
+        <input type="email" id="f-email" placeholder="comprador@empresa.com.br"
+               autocapitalize="off" autocorrect="off" spellcheck="false"
+               oninput="validarCampoEmail()">
+        <p class="hint" id="hint-email">Usado no botão “Apresentação”, que abre o e-mail de apresentação já preenchido.</p>
       </fieldset>
 
       <fieldset>
@@ -466,6 +473,15 @@
       <button class="btn btn-secondary" onclick="testarSincronizacao()">Testar conexão</button>
     </div>
 
+    <h3>Planilha que já existe: coluna E-mail</h3>
+    <p class="hint">
+      O botão “Apresentação” precisa do e-mail do comprador. Se a sua planilha já está rodando,
+      adicione uma coluna com o cabeçalho exato <b>E-mail</b> (qualquer posição serve — o script
+      acha pelo nome, não pela ordem) e republique o Apps Script abaixo em
+      <b>Implantar → Gerenciar implantações → lápis → Nova versão</b>.
+      Sem isso, o e-mail fica só no celular do vendedor e não aparece para o gerente.
+    </p>
+
     <h3>Como criar a planilha do gerente</h3>
     <p class="hint">
       1. No Google Sheets, crie uma planilha nova (ex: "Visitas DAPCO").<br>
@@ -480,14 +496,14 @@
 // Funcoes puras: nao usam SpreadsheetApp. Testadas por tests/appsscript.test.mjs.
 
 var CABECALHO_PADRAO = ['ID','Vendedor','Cliente','Cidade','UF','Contato','Cargo',
-  'Telefone','Data/Hora','Status','Produtos','Potencial','Valor',
+  'Telefone','E-mail','Data/Hora','Status','Produtos','Potencial','Valor',
   'Objeções','Próxima Ação','Prazo','Observações','Recebido em'];
 
 // Nome da coluna na planilha -> nome do campo no app.
 var MAPA_COLUNAS = {
   'ID':'id', 'Vendedor':'vendedor', 'Cliente':'cliente', 'Cidade':'cidade',
   'UF':'uf', 'Contato':'contato', 'Cargo':'cargo', 'Telefone':'telefone',
-  'Data/Hora':'datahora', 'Status':'status', 'Produtos':'produtos',
+  'E-mail':'email', 'Data/Hora':'datahora', 'Status':'status', 'Produtos':'produtos',
   'Potencial':'potencial', 'Valor':'valor', 'Objeções':'objecoes',
   'Próxima Ação':'proximaAcao', 'Prazo':'prazo', 'Horário':'prazoHora',
   'Observações':'obs'
@@ -608,7 +624,8 @@ function doGet(e) {
         visitas.push({
           id: obj['ID'], vendedor: obj['Vendedor'], cliente: obj['Cliente'],
           cidade: obj['Cidade'], uf: obj['UF'], contato: obj['Contato'],
-          cargo: obj['Cargo'], telefone: obj['Telefone'], datahora: obj['Data/Hora'],
+          cargo: obj['Cargo'], telefone: obj['Telefone'], email: obj['E-mail'],
+          datahora: obj['Data/Hora'],
           status: obj['Status'], produtos: obj['Produtos'], potencial: obj['Potencial'],
           valor: obj['Valor'], objecoes: obj['Objeções'], proximaAcao: obj['Próxima Ação'],
           prazo: obj['Prazo'], prazoHora: obj['Horário'], obs: obj['Observações']
@@ -851,6 +868,86 @@ function ordenarVisitas(lista, modo){
   return copia.sort(compararRecentes);
 }
 
+// ===== E-mail de apresentacao =====
+
+// Endereco publico do catalogo. mailto: nao carrega anexo, entao o PDF vai
+// como link — por isso ele precisa estar hospedado junto do app no Pages.
+const LINK_CATALOGO = 'https://gpa1000.github.io/relatorio-visitas-dapco/catalogo-dapco-2023.pdf';
+
+function saudacaoPorHora(hora){
+  const h = Number(hora);
+  if(h < 12) return 'bom dia';
+  if(h < 18) return 'boa tarde';
+  return 'boa noite';
+}
+
+// Comprador se trata pelo primeiro nome; "Ricardo Almeida Souza" vira "Ricardo".
+function primeiroNome(nome){
+  const limpo = String(nome || '').trim();
+  if(!limpo) return '';
+  return limpo.split(/\s+/)[0];
+}
+
+// Validacao de e-mail deliberadamente frouxa: so evita o erro grosseiro
+// (sem @, sem ponto no dominio). Regex rigorosa demais rejeita endereco valido.
+function emailValido(email){
+  const limpo = String(email || '').trim();
+  if(!limpo) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(limpo);
+}
+
+function montarEmailApresentacao(v, opcoes){
+  const cfg = opcoes || {};
+  const hora = cfg.hora !== undefined ? cfg.hora : new Date().getHours();
+  const link = String(cfg.linkCatalogo || '').trim();
+
+  const cliente = String((v && v.cliente) || '').trim();
+  const vendedor = String((v && v.vendedor) || '').trim();
+  const nome = primeiroNome(v && v.contato) || 'Prezado Cliente';
+
+  const assunto = cliente
+    ? 'Dapco — fixadores em aço inox para a ' + cliente
+    : 'Dapco — fixadores em aço inox';
+
+  const linhas = [
+    nome + ', ' + saudacaoPorHora(hora) + '.',
+    '',
+    'Obrigado pelo tempo na nossa visita. Como combinado, segue a apresentação da Dapco.',
+    '',
+    'Somos uma empresa brasileira especializada em fixadores inoxidáveis há mais de 30 anos: '
+      + 'parafusos, porcas, arruelas, barras, rebites, fendados, autobrocantes e as linhas solar '
+      + 'e marítima, em aço inox 304, 316 e 410. Atendemos todo o território nacional com estoque '
+      + 'amplo e entrega imediata.',
+    ''
+  ];
+
+  if(link) linhas.push('Catálogo completo: ' + link);
+  linhas.push('Site: www.dapco.com.br');
+
+  linhas.push('');
+  linhas.push('Agradecemos a atenção e ficamos à disposição para melhor atendê-los.');
+  linhas.push('');
+  linhas.push('Atenciosamente,');
+  if(vendedor) linhas.push(vendedor);
+  linhas.push('Dapco Fixadores Inoxidáveis');
+
+  return {
+    para: String((v && v.email) || '').trim(),
+    assunto: assunto,
+    corpo: linhas.join('\n')
+  };
+}
+
+function linkMailtoApresentacao(v, opcoes){
+  const email = montarEmailApresentacao(v, opcoes);
+  if(!email.para) return null;
+  // @ fica cru de proposito: parte dos clientes de e-mail nao entende %40.
+  const destino = encodeURIComponent(email.para).replace(/%40/g, '@');
+  return 'mailto:' + destino
+    + '?subject=' + encodeURIComponent(email.assunto)
+    + '&body=' + encodeURIComponent(email.corpo);
+}
+
 // ===== FIM NUCLEO TESTAVEL =====
 
 let produtosSelecionados = [];
@@ -1069,6 +1166,7 @@ function salvarVisita(){
     contato: document.getElementById('f-contato').value.trim(),
     cargo: document.getElementById('f-cargo').value.trim(),
     telefone: document.getElementById('f-telefone').value.trim(),
+    email: document.getElementById('f-email').value.trim(),
     datahora,
     status: document.getElementById('f-status').value,
     produtos: produtos.join(', '),
@@ -1160,6 +1258,7 @@ function editarVisita(id){
   document.getElementById('f-contato').value = v.contato||'';
   document.getElementById('f-cargo').value = v.cargo||'';
   document.getElementById('f-telefone').value = v.telefone||'';
+  document.getElementById('f-email').value = v.email||'';
   document.getElementById('f-datahora').value = v.datahora || agoraLocalISO();
   document.getElementById('f-status').value = v.status || 'Prospecção';
 
@@ -1204,6 +1303,7 @@ function novaVisitaMesmoCliente(id){
   document.getElementById('f-contato').value = v.contato||'';
   document.getElementById('f-cargo').value = v.cargo||'';
   document.getElementById('f-telefone').value = v.telefone||'';
+  document.getElementById('f-email').value = v.email||'';
   preencherProdutosNoFormulario(v.produtos);
 
   mostrarTab('nova');
@@ -1231,6 +1331,7 @@ function limparFormulario(avisar){
   document.getElementById('f-contato').value='';
   document.getElementById('f-cargo').value='';
   document.getElementById('f-telefone').value='';
+  document.getElementById('f-email').value='';
   document.getElementById('f-datahora').value = agoraLocalISO();
   document.getElementById('f-status').value='Prospecção';
   document.getElementById('f-produtos-outros').value='';
@@ -1323,6 +1424,7 @@ function renderHistorico(){
         <dt>Local</dt><dd>${escapeHTML(v.cidade||'-')}${v.uf ? ' / '+escapeHTML(v.uf):''}</dd>
         <dt>Contato</dt><dd>${escapeHTML(v.contato||'-')} ${v.cargo? '('+escapeHTML(v.cargo)+')':''}</dd>
         <dt>Telefone</dt><dd>${escapeHTML(v.telefone||'-')}</dd>
+        <dt>E-mail</dt><dd>${escapeHTML(v.email||'-')}</dd>
         <dt>Produtos apresentados</dt><dd>${escapeHTML(v.produtos||'-')}</dd>
         <dt>Valor estimado</dt><dd>${v.valor ? 'R$ '+formatarMoeda(v.valor) : '-'}</dd>
         <dt>Objeções / dificuldades</dt><dd>${escapeHTML(v.objecoes||'-')}</dd>
@@ -1333,6 +1435,7 @@ function renderHistorico(){
         <button onclick="editarVisita(${idJs})">✏️ Editar</button>
         <button onclick="novaVisitaMesmoCliente(${idJs})">🆕 Nova Visita</button>
         ${v.telefone ? `<button class="whatsapp-btn" onclick="abrirWhatsApp(${idJs})">💬 WhatsApp</button>` : ''}
+        ${v.email ? `<button class="email-btn" onclick="abrirApresentacao(${idJs})">📧 Apresentação</button>` : ''}
         ${(v.proximaAcao && v.prazo) ? `<button onclick="abrirAgendaPorId(${idJs})">📅 Agenda</button>` : ''}
         <button onclick="compartilharVisita(${idJs})">📤 Compartilhar</button>
         <button onclick="excluirVisita(${idJs})">🗑️ Excluir</button>
@@ -1445,6 +1548,43 @@ function abrirWhatsApp(id){
   // usar location.href (em vez de window.open) para o navegador do celular
   // reconhecer o link e abrir o app do WhatsApp de forma confiável
   window.location.href = url;
+}
+
+// ===== E-mail de apresentacao =====
+
+function validarCampoEmail(){
+  const campo = document.getElementById('f-email');
+  const hint = document.getElementById('hint-email');
+  const valor = campo.value.trim();
+
+  // Campo vazio e valido: e-mail e opcional, so desliga o botao Apresentacao.
+  const ruim = valor !== '' && !emailValido(valor);
+  campo.classList.toggle('campo-invalido', ruim);
+  hint.textContent = ruim
+    ? 'Endereço incompleto — confira o @ e o domínio.'
+    : 'Usado no botão “Apresentação”, que abre o e-mail de apresentação já preenchido.';
+}
+
+function abrirApresentacao(id){
+  const lista = pegarVisitas();
+  const v = lista.find(x=>String(x.id)===String(id));
+
+  if(!v || !v.email){
+    toast('⚠️ Esta visita não tem e-mail cadastrado');
+    return;
+  }
+  if(!emailValido(v.email)){
+    toast('⚠️ E-mail parece incompleto — edite a visita e confira');
+    return;
+  }
+
+  const link = linkMailtoApresentacao(v, { linkCatalogo: LINK_CATALOGO });
+  if(!link) return;
+
+  toast('📧 Abrindo o e-mail — revise antes de enviar');
+  // location.href, e nao window.open: e assim que o celular entrega o link
+  // para o app de e-mail padrao de forma confiavel (mesmo caso do WhatsApp).
+  window.location.href = link;
 }
 
 // ===== Agenda (Outlook Calendar) =====
@@ -1719,6 +1859,7 @@ async function confirmarImportar(){
         contato: row.contato || '',
         cargo: row.cargo || '',
         telefone: row.telefone || '',
+        email: row.email || '',
         datahora: row.datahora || '',
         status: row.status || '',
         produtos: row.produtos || '',
@@ -1870,8 +2011,8 @@ function exportarCSV(){
   const lista = pegarVisitas();
   if(lista.length===0){ toast('Não há visitas para exportar'); return; }
 
-  const colunas = ['vendedor','cliente','cidade','uf','contato','cargo','telefone','datahora','status','produtos','potencial','valor','objecoes','proximaAcao','prazo','prazoHora','obs'];
-  const cabecalho = ['Vendedor','Cliente','Cidade','UF','Contato','Cargo','Telefone','Data/Hora','Status','Produtos','Potencial','Valor Estimado','Objeções','Próxima Ação','Prazo','Horário','Observações'];
+  const colunas = ['vendedor','cliente','cidade','uf','contato','cargo','telefone','email','datahora','status','produtos','potencial','valor','objecoes','proximaAcao','prazo','prazoHora','obs'];
+  const cabecalho = ['Vendedor','Cliente','Cidade','UF','Contato','Cargo','Telefone','E-mail','Data/Hora','Status','Produtos','Potencial','Valor Estimado','Objeções','Próxima Ação','Prazo','Horário','Observações'];
 
   const linhas = [cabecalho.join(';')];
   lista.forEach(v=>{

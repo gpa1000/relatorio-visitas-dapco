@@ -34,6 +34,8 @@ const NOMES_NUCLEO = [
   'lerGaveta', 'gravarGaveta', 'registrarVendedorLocal',
   'listarVendedoresLocais', 'migrarParaGavetas',
   'parseDataVisita', 'rankPotencial', 'ordenarVisitas',
+  'saudacaoPorHora', 'primeiroNome', 'emailValido',
+  'montarEmailApresentacao', 'linkMailtoApresentacao',
 ];
 
 // Exporta so o que ja existe no bloco. Assim, funcao ainda nao escrita vira
@@ -53,7 +55,7 @@ export function carregarNucleo(localStorageFalso) {
 }
 
 const NOMES_APPS = [
-  'CABECALHO_PADRAO', 'indicesPorCabecalho', 'listarVendedoresDaMatriz',
+  'CABECALHO_PADRAO', 'MAPA_COLUNAS', 'indicesPorCabecalho', 'listarVendedoresDaMatriz',
   'acharLinhaPorId', 'montarLinhaPorCabecalho',
 ];
 
