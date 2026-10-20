@@ -244,3 +244,26 @@ test('migracao nao faz nada quando nao ha chave antiga', () => {
   assert.equal(n.migrarParaGavetas().migrou, false);
   assert.equal(ls.getItem('dapco_visitas_v1__backup'), null);
 });
+
+// Trava de data (20/10/2026): uma visita da LEUNAME foi lançada em 24/12/2026
+// em vez de 24/09 e passou sem aviso. Data depois de hoje pede confirmação.
+test('visitaNoFuturo acusa data em dia posterior a hoje', () => {
+  const n = carregarNucleo(criarLocalStorageFalso());
+  const hoje = new Date(2026, 9, 20, 10, 0); // 20/10/2026 10:00, hora local
+  assert.equal(n.visitaNoFuturo('2026-12-24T15:45', hoje), true);
+  assert.equal(n.visitaNoFuturo('2026-10-21T08:00', hoje), true);
+});
+
+test('visitaNoFuturo aceita hoje (mesmo mais tarde) e datas passadas', () => {
+  const n = carregarNucleo(criarLocalStorageFalso());
+  const hoje = new Date(2026, 9, 20, 10, 0);
+  assert.equal(n.visitaNoFuturo('2026-10-20T23:30', hoje), false);
+  assert.equal(n.visitaNoFuturo('2026-09-24T15:45', hoje), false);
+});
+
+test('visitaNoFuturo nao trava data vazia ou invalida (outra validacao cuida)', () => {
+  const n = carregarNucleo(criarLocalStorageFalso());
+  const hoje = new Date(2026, 9, 20, 10, 0);
+  assert.equal(n.visitaNoFuturo('', hoje), false);
+  assert.equal(n.visitaNoFuturo('feriado', hoje), false);
+});

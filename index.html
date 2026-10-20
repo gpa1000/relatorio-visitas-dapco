@@ -899,6 +899,16 @@ function parseDataVisita(valor){
   return Number.isNaN(t) ? null : t;
 }
 
+// Visita é relato do que já aconteceu: data em dia posterior a hoje quase
+// sempre é erro de digitação (24/12 no lugar de 24/09, em 2026). Compara só o
+// dia, na hora local do aparelho, para não acusar a visita de hoje à noite.
+function visitaNoFuturo(datahora, agora){
+  if(parseDataVisita(datahora) === null) return false;
+  const pad = n => String(n).padStart(2, '0');
+  const hoje = agora.getFullYear() + '-' + pad(agora.getMonth() + 1) + '-' + pad(agora.getDate());
+  return String(datahora).slice(0, 10) > hoje;
+}
+
 function rankPotencial(p){
   const limpo = String(p == null ? '' : p)
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -1242,6 +1252,13 @@ function salvarVisita(){
   if(!datahora){
     toast('⚠️ Informe a data e hora da visita');
     return;
+  }
+  if(visitaNoFuturo(datahora, new Date())){
+    const dia = datahora.slice(0, 10).split('-').reverse().join('/');
+    if(!confirm('A data da visita (' + dia + ') é depois de hoje.\n\nConfirma essa data?')){
+      document.getElementById('f-datahora').focus();
+      return;
+    }
   }
 
   const vendedor = document.getElementById('f-vendedor').value.trim();
